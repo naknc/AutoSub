@@ -30,12 +30,16 @@ LANG_MAP = {
 	"tur": "tr",
 	"fra": "fr",
 	"deu": "de",
+	"nld": "nl",
 	"spa": "es",
 	"ita": "it",
 	"por": "pt",
+	"zho": "zh",
 	"jpn": "ja",
 	"kor": "ko",
 	"rus": "ru",
+	"hin": "hi",
+	"ara": "ar",
 }
 
 def is_linux():
@@ -57,47 +61,51 @@ def build_style():
 	item_padding = "8px 10px" if is_linux() else "10px 12px"
 	input_padding = "7px 9px" if is_linux() else "8px 10px"
 	return (
-		f"QWidget{{font-family:{base_font_family()};font-size:13px;color:#E5E7EB;"
-		"selection-background-color:#2563EB;selection-color:#F8FAFC}"
-		"QMainWindow{background:#0F172A}"
+		f"QWidget{{font-family:'Manrope','Avenir Next','Helvetica Neue',sans-serif;font-size:13px;color:#DCE6F8;"
+		"selection-background-color:#0074FB;selection-color:#F7FAFF}"
+		"QMainWindow{background:#09111F}"
 		f"QFrame#sidebarCard,QFrame#playlistFrame,QFrame#syncFrame,QFrame#controlCard,QFrame#progressCard,QFrame#headerCard{{"
-		f"background:#111827;border:1px solid #1F2937;border-radius:{radius}px}}"
-		f"QFrame#videoFrame{{background:#020617;border:1px solid #1E293B;border-radius:{video_radius}px}}"
-		f"QPushButton{{background:#2563EB;color:#F8FAFC;border:none;border-radius:10px;padding:{control_padding};font-weight:600}}"
-		"QPushButton:hover{background:#1D4ED8}"
-		"QPushButton:pressed{background:#1E40AF}"
-		"QPushButton:disabled{background:#334155;color:#94A3B8}"
-		"QPushButton#secondaryButton{background:#1F2937;color:#E5E7EB;border:1px solid #334155}"
-		"QPushButton#secondaryButton:hover{background:#273449}"
-		"QPushButton#dangerButton{background:#7F1D1D;color:#FEE2E2;border:1px solid #991B1B}"
-		"QPushButton#dangerButton:hover{background:#991B1B}"
-		"QLabel{font-size:12px;color:#CBD5E1}"
-		"QLabel#titleLabel{font-size:16px;font-weight:700;color:#F8FAFC}"
-		"QLabel#sectionLabel{font-size:11px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#94A3B8}"
-		"QLabel#mutedLabel{color:#94A3B8}"
-		"QLabel#statusLabel{color:#E2E8F0;font-weight:600}"
-		"QLabel#badgeLabel{background:#172554;color:#BFDBFE;border:1px solid #1D4ED8;border-radius:999px;padding:4px 10px;font-weight:700}"
-		"QSlider::groove:horizontal{height:8px;background:#1E293B;border-radius:4px}"
-		"QSlider::handle:horizontal{background:#E2E8F0;width:16px;height:16px;margin:-5px 0;border-radius:8px}"
-		"QSlider::sub-page:horizontal{background:#2563EB;border-radius:4px}"
-		"QSlider::add-page:horizontal{background:#334155;border-radius:4px}"
-		f"QListWidget{{background:#0B1220;border:1px solid #1F2937;border-radius:{max(radius - 4, 10)}px;outline:none;padding:6px}}"
-		f"QListWidget::item{{padding:{item_padding};border-radius:10px;color:#E5E7EB}}"
-		"QListWidget::item:selected{background:#1D4ED8;color:#F8FAFC}"
-		"QListWidget::item:hover{background:#172033}"
-		f"QLineEdit,QComboBox{{background:#0B1220;border:1px solid #334155;border-radius:10px;padding:{input_padding};color:#F8FAFC}}"
-		"QLineEdit:focus,QComboBox:focus{border:1px solid #2563EB}"
+		f"background:#0F1A2E;border:1px solid #183152;border-radius:{radius}px}}"
+		f"QFrame#videoFrame{{background:#050A12;border:1px solid #183152;border-radius:{video_radius}px}}"
+		f"QPushButton{{background:#0074FB;color:#F8FBFF;border:none;border-radius:10px;padding:{control_padding};font-weight:700}}"
+		"QPushButton:hover{background:#1982FC}"
+		"QPushButton:pressed{background:#005FCC}"
+		"QPushButton:disabled{background:#23344F;color:#7D92B0}"
+		"QPushButton#secondaryButton{background:#16243A;color:#DCE6F8;border:1px solid #28476F}"
+		"QPushButton#secondaryButton:hover{background:#1A3152}"
+		"QPushButton#dangerButton{background:#3A1F1F;color:#FFE3E3;border:1px solid #7C3A3A}"
+		"QPushButton#dangerButton:hover{background:#5A2B2B}"
+		"QLabel{font-size:12px;color:#C8D5EA}"
+		"QLabel#titleLabel{font-size:16px;font-weight:800;color:#F9FBFF}"
+		"QLabel#sectionLabel{font-size:11px;font-weight:800;letter-spacing:0.08em;text-transform:uppercase;color:#8EA9CC}"
+		"QLabel#mutedLabel{color:#8EA9CC}"
+		"QLabel#statusLabel{color:#EFF5FF;font-weight:600}"
+		"QLabel#badgeLabel{background:#14233A;color:#FBF700;border:1px solid #35598A;border-radius:999px;padding:4px 10px;font-weight:800}"
+		"QSlider::groove:horizontal{height:8px;background:#223753;border-radius:4px}"
+		"QSlider::handle:horizontal{background:#FBF700;width:16px;height:16px;margin:-5px 0;border-radius:8px}"
+		"QSlider::sub-page:horizontal{background:#0074FB;border-radius:4px}"
+		"QSlider::add-page:horizontal{background:#314966;border-radius:4px}"
+		f"QListWidget{{background:#0A1322;border:1px solid #1B3557;border-radius:{max(radius - 4, 10)}px;outline:none;padding:6px}}"
+		f"QListWidget::item{{padding:{item_padding};border-radius:10px;color:#DCE6F8}}"
+		"QListWidget::item:selected{background:#0074FB;color:#F8FBFF}"
+		"QListWidget::item:hover{background:#162640}"
+		f"QLineEdit,QComboBox{{background:#0A1322;border:1px solid #2B466B;border-radius:10px;padding:{input_padding};color:#F8FBFF}}"
+		"QLineEdit:focus,QComboBox:focus{border:1px solid #0074FB}"
 		"QTabWidget::pane{border:none;background:transparent}"
-		"QTabBar::tab{background:#0B1220;color:#94A3B8;border:1px solid #1F2937;padding:8px 12px;border-top-left-radius:10px;border-top-right-radius:10px;margin-right:6px}"
-		"QTabBar::tab:selected{background:#172554;color:#F8FAFC;border-color:#2563EB}"
+		"QTabBar::tab{background:#0A1322;color:#8EA9CC;border:1px solid #203B60;padding:8px 12px;border-top-left-radius:10px;border-top-right-radius:10px;margin-right:6px}"
+		"QTabBar::tab:selected{background:#16243A;color:#F8FBFF;border-color:#0074FB}"
+		"QScrollBar:vertical{background:#0A1322;width:12px;margin:4px 0 4px 0;border-radius:6px}"
+		"QScrollBar::handle:vertical{background:#28476F;min-height:28px;border-radius:6px}"
+		"QScrollBar::handle:vertical:hover{background:#0074FB}"
+		"QScrollBar::add-line:vertical,QScrollBar::sub-line:vertical{height:0px}"
 	)
 
 
 def build_video_style():
 	video_radius = 16 if is_linux() else 22
 	return (
-		f"QFrame{{background:qlineargradient(x1:0,y1:0,x2:1,y2:1,stop:0 #020617,stop:0.6 #0B1220,stop:1 #111827);"
-		f"border:1px solid #1E293B;border-radius:{video_radius}px}}"
+		f"QFrame{{background:qlineargradient(x1:0,y1:0,x2:1,y2:1,stop:0 #040912,stop:0.72 #09111F,stop:1 #0F1A2E);"
+		f"border:1px solid #183152;border-radius:{video_radius}px}}"
 	)
 
 
@@ -520,6 +528,16 @@ class VideoPlayer(QtWidgets.QMainWindow):
 		self.lang_combo.addItem("English", "eng")
 		self.lang_combo.addItem("Turkish", "tur")
 		self.lang_combo.addItem("Russian", "rus")
+		self.lang_combo.addItem("French", "fra")
+		self.lang_combo.addItem("Spanish", "spa")
+		self.lang_combo.addItem("Italian", "ita")
+		self.lang_combo.addItem("German", "deu")
+		self.lang_combo.addItem("Dutch", "nld")
+		self.lang_combo.addItem("Chinese", "zho")
+		self.lang_combo.addItem("Japanese", "jpn")
+		self.lang_combo.addItem("Hindi", "hin")
+		self.lang_combo.addItem("Arabic", "ara")
+		self.lang_combo.addItem("Portuguese", "por")
 		self.lang_combo.currentIndexChanged.connect(self._on_lang_changed)
 		actions.addWidget(self.lang_combo)
 		action_buttons = QtWidgets.QGridLayout()
