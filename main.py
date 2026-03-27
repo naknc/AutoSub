@@ -155,6 +155,10 @@ def media_identity(path: Path):
 	}
 
 
+def chat_timestamp():
+	return QtCore.QDateTime.currentDateTime().toString("HH:mm")
+
+
 class SubtitleWorker(QtCore.QObject):
 	finished = QtCore.pyqtSignal(str, object)
 	errored = QtCore.pyqtSignal(str)
@@ -549,6 +553,26 @@ class VideoPlayer(QtWidgets.QMainWindow):
 		self._sync_members.setWordWrap(True)
 		sl.addWidget(self._sync_status)
 		sl.addWidget(self._sync_members)
+		self._chat_label = QtWidgets.QLabel("Room Chat")
+		self._chat_label.setObjectName("sectionLabel")
+		sl.addWidget(self._chat_label)
+		self._chat_list = QtWidgets.QListWidget()
+		self._chat_list.setMinimumHeight(160)
+		sl.addWidget(self._chat_list)
+		chat_hint = QtWidgets.QLabel("Type freely, including emoji.")
+		chat_hint.setObjectName("mutedLabel")
+		sl.addWidget(chat_hint)
+		chat_row = QtWidgets.QHBoxLayout()
+		chat_row.setSpacing(self._compact_spacing)
+		self._chat_input = QtWidgets.QLineEdit()
+		self._chat_input.setPlaceholderText("Write a message...")
+		self._chat_input.returnPressed.connect(self._send_chat_message)
+		chat_row.addWidget(self._chat_input, stretch=1)
+		self._chat_send_btn = QtWidgets.QPushButton("Send")
+		self._chat_send_btn.setObjectName("secondaryButton")
+		self._chat_send_btn.clicked.connect(self._send_chat_message)
+		chat_row.addWidget(self._chat_send_btn)
+		sl.addLayout(chat_row)
 		pl.addWidget(self._sync_frame)
 
 		self._rl = QtWidgets.QVBoxLayout()
@@ -640,6 +664,7 @@ class VideoPlayer(QtWidgets.QMainWindow):
 		self._queue_label.hide()
 		self._qw.hide()
 		self._refresh_selection_button()
+		self._set_chat_enabled(False)
 
 	def _refresh_audio_devices(self):
 		self._audio_combo.blockSignals(True)
@@ -685,12 +710,37 @@ class VideoPlayer(QtWidgets.QMainWindow):
 		self._disconnect_btn.setEnabled(connected)
 		for w in (self._server_in, self._room_in, self._name_in):
 			w.setEnabled(not connected)
+		self._set_chat_enabled(connected)
 		if connected:
 			self._sync_status.setText(f"Connected to {self._room_in.text().strip()}")
+			self._append_chat_message("System", "Chat is ready.")
+		else:
+			self._append_chat_message("System", "Disconnected from room.")
 
 	def _on_sync_members(self, members):
 		names = [m.get("name", "Guest") for m in members]
 		self._sync_members.setText(f"Members: {', '.join(names) if names else '-'}")
+
+	def _set_chat_enabled(self, enabled):
+		self._chat_input.setEnabled(enabled)
+		self._chat_send_btn.setEnabled(enabled)
+
+	def _append_chat_message(self, sender, text, stamp=None):
+		if not text:
+			return
+		item = QtWidgets.QListWidgetItem(f"[{stamp or chat_timestamp()}] {sender}: {text}")
+		self._chat_list.addItem(item)
+		self._chat_list.scrollToBottom()
+
+	def _send_chat_message(self):
+		text = self._chat_input.text().strip()
+		if not text or not self.sync.connected:
+			return
+		sender = self._name_in.text().strip() or "You"
+		stamp = chat_timestamp()
+		self._append_chat_message(sender, text, stamp)
+		self.sync.send_event("chat_message", {"sender": sender, "text": text, "sent_at": stamp})
+		self._chat_input.clear()
 
 	def _add_videos(self):
 		paths, _ = QtWidgets.QFileDialog.getOpenFileNames(
@@ -983,6 +1033,13 @@ class VideoPlayer(QtWidgets.QMainWindow):
 		if not event_type:
 			return
 		if event.get("client_id") == self.sync.client_id:
+			return
+		if event_type == "chat_message":
+			self._append_chat_message(
+				payload.get("sender", "Guest"),
+				payload.get("text", ""),
+				payload.get("sent_at"),
+			)
 			return
 		media = payload.get("media", {})
 		idx = self._find_playlist_index(media) if media else None

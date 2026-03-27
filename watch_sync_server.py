@@ -19,6 +19,8 @@ rooms: dict[str, Room] = {}
 
 
 class Room:
+	PLAYBACK_EVENTS = {"load", "play", "pause", "seek", "stop"}
+
 	def __init__(self, code: str):
 		self.code = code
 		# {client_id: {"name": str, "ws": websocket}}
@@ -126,7 +128,8 @@ async def handler(ws):
 					"client_id": client_id,
 					"ts": time.time(),
 				}
-				room.state = event
+				if event_type in Room.PLAYBACK_EVENTS:
+					room.state = event
 
 				await room.broadcast(json.dumps(event), exclude_id=client_id)
 
