@@ -423,6 +423,10 @@ class VideoPlayer(QtWidgets.QMainWindow):
 		self._jid = 0
 		self._sync_applying = False
 		self._resume_after_seek = False
+		self._headline_text = "Drop a video to start"
+		self._status_text = "Drop a video to start"
+		self._sync_status_text = "Not connected"
+		self._sync_members_text = "Members: -"
 		self.sync = WatchSyncClient(self)
 		self._build_ui()
 		self.timer = QtCore.QTimer(self)
@@ -623,9 +627,12 @@ class VideoPlayer(QtWidgets.QMainWindow):
 		header_layout.setSpacing(self._compact_spacing)
 		self._headline = QtWidgets.QLabel("Drop a video to start")
 		self._headline.setObjectName("titleLabel")
+		self._headline.setSizePolicy(QtWidgets.QSizePolicy.Policy.Expanding, QtWidgets.QSizePolicy.Policy.Preferred)
+		self._headline.setMinimumWidth(0)
 		header_layout.addWidget(self._headline, stretch=1)
 		self._room_badge = QtWidgets.QLabel("Solo")
 		self._room_badge.setObjectName("badgeLabel")
+		self._room_badge.setSizePolicy(QtWidgets.QSizePolicy.Policy.Maximum, QtWidgets.QSizePolicy.Policy.Preferred)
 		header_layout.addWidget(self._room_badge)
 		self._stage_layout.addWidget(self._header)
 
@@ -675,40 +682,47 @@ class VideoPlayer(QtWidgets.QMainWindow):
 
 		self._ctrl_w = QtWidgets.QFrame()
 		self._ctrl_w.setObjectName("controlCard")
-		cl = QtWidgets.QHBoxLayout()
+		cl = QtWidgets.QGridLayout()
 		cl.setContentsMargins(self._card_margins, 12, self._card_margins, 12)
-		cl.setSpacing(self._compact_spacing)
+		cl.setHorizontalSpacing(self._compact_spacing)
+		cl.setVerticalSpacing(10)
 		self._play_btn = QtWidgets.QPushButton("Play")
 		self._play_btn.clicked.connect(self._toggle_play)
-		cl.addWidget(self._play_btn)
+		cl.addWidget(self._play_btn, 0, 0)
 		b = QtWidgets.QPushButton("Stop")
 		b.setObjectName("secondaryButton")
 		b.clicked.connect(self._stop)
-		cl.addWidget(b)
+		cl.addWidget(b, 0, 1)
 		self._fs_btn = QtWidgets.QPushButton("Fullscreen")
 		self._fs_btn.setObjectName("secondaryButton")
 		self._fs_btn.clicked.connect(self._toggle_fs)
-		cl.addWidget(self._fs_btn)
-		audio_label = QtWidgets.QLabel("Audio")
-		audio_label.setObjectName("sectionLabel")
-		cl.addWidget(audio_label)
+		cl.addWidget(self._fs_btn, 0, 2)
+		self._audio_label = QtWidgets.QLabel("Audio")
+		self._audio_label.setObjectName("sectionLabel")
+		cl.addWidget(self._audio_label, 0, 3)
 		self._audio_combo = QtWidgets.QComboBox()
 		self._audio_combo.setMaximumWidth(180)
+		self._audio_combo.setSizePolicy(QtWidgets.QSizePolicy.Policy.Expanding, QtWidgets.QSizePolicy.Policy.Fixed)
 		self._audio_combo.currentIndexChanged.connect(self._on_audio_device_changed)
-		cl.addWidget(self._audio_combo)
-		vol_label = QtWidgets.QLabel("Vol")
-		vol_label.setObjectName("sectionLabel")
-		cl.addWidget(vol_label)
+		cl.addWidget(self._audio_combo, 0, 4)
+		self._vol_label = QtWidgets.QLabel("Vol")
+		self._vol_label.setObjectName("sectionLabel")
+		cl.addWidget(self._vol_label, 0, 5)
 		vol = QtWidgets.QSlider(QtCore.Qt.Orientation.Horizontal)
 		vol.setRange(0, 100)
 		vol.setValue(80)
 		vol.setMaximumWidth(self._control_slider_width)
+		vol.setSizePolicy(QtWidgets.QSizePolicy.Policy.Expanding, QtWidgets.QSizePolicy.Policy.Fixed)
 		vol.valueChanged.connect(self.player.audio_set_volume)
-		cl.addWidget(vol)
-		cl.addStretch()
+		self._vol_slider = vol
+		cl.addWidget(vol, 0, 6)
 		self._status = QtWidgets.QLabel("Drop a video to start")
 		self._status.setObjectName("statusLabel")
-		cl.addWidget(self._status)
+		self._status.setSizePolicy(QtWidgets.QSizePolicy.Policy.Expanding, QtWidgets.QSizePolicy.Policy.Preferred)
+		self._status.setMinimumWidth(0)
+		cl.addWidget(self._status, 1, 0, 1, 7)
+		cl.setColumnStretch(4, 1)
+		cl.setColumnStretch(6, 1)
 		self._ctrl_w.setLayout(cl)
 		self._stage_layout.addWidget(self._ctrl_w)
 
@@ -722,6 +736,41 @@ class VideoPlayer(QtWidgets.QMainWindow):
 		self._qw.hide()
 		self._refresh_selection_button()
 		self._set_chat_enabled(False)
+		self._refresh_responsive_ui()
+
+	def _elide(self, text, label):
+		if not text:
+			return ""
+		width = max(40, label.width() - 6)
+		return label.fontMetrics().elidedText(text, QtCore.Qt.TextElideMode.ElideRight, width)
+
+	def _set_headline(self, text):
+		self._headline_text = text
+		self._headline.setText(self._elide(text, self._headline))
+
+	def _set_status_message(self, text):
+		self._status_text = text
+		self._status.setText(self._elide(text, self._status))
+
+	def _set_sync_status(self, text):
+		self._sync_status_text = text
+		self._sync_status.setText(text)
+
+	def _set_sync_members(self, text):
+		self._sync_members_text = text
+		self._sync_members.setText(text)
+
+	def _refresh_responsive_ui(self):
+		narrow = self.width() < 1180
+		very_narrow = self.width() < 980
+		self._audio_label.setVisible(not very_narrow)
+		self._vol_label.setVisible(not very_narrow)
+		self._audio_combo.setMaximumWidth(130 if narrow else 180)
+		self._vol_slider.setMaximumWidth(84 if very_narrow else self._control_slider_width)
+		self._set_headline(self._headline_text)
+		self._set_status_message(self._status_text)
+		self._sync_status.setText(self._sync_status_text)
+		self._sync_members.setText(self._sync_members_text)
 
 	def _refresh_audio_devices(self):
 		self._audio_combo.blockSignals(True)
@@ -760,7 +809,7 @@ class VideoPlayer(QtWidgets.QMainWindow):
 		)
 
 	def _on_sync_status(self, message):
-		self._sync_status.setText(message)
+		self._set_sync_status(message)
 
 	def _on_sync_connected(self, connected):
 		self._connect_btn.setEnabled(not connected)
@@ -769,7 +818,7 @@ class VideoPlayer(QtWidgets.QMainWindow):
 			w.setEnabled(not connected)
 		self._set_chat_enabled(connected)
 		if connected:
-			self._sync_status.setText(f"Connected to {self._room_in.text().strip()}")
+			self._set_sync_status(f"Connected to {self._room_in.text().strip()}")
 			self._room_badge.setText(f"Room: {self._room_in.text().strip()}")
 			self._append_chat_message("System", "Chat is ready.")
 		else:
@@ -778,7 +827,7 @@ class VideoPlayer(QtWidgets.QMainWindow):
 
 	def _on_sync_members(self, members):
 		names = [m.get("name", "Guest") for m in members]
-		self._sync_members.setText(f"Members: {', '.join(names) if names else '-'}")
+		self._set_sync_members(f"Members: {', '.join(names) if names else '-'}")
 
 	def _set_chat_enabled(self, enabled):
 		self._chat_input.setEnabled(enabled)
@@ -829,8 +878,8 @@ class VideoPlayer(QtWidgets.QMainWindow):
 		if self.current_index is None and self.playlist:
 			self.current_index = 0
 			self._plw.setCurrentRow(0)
-		self._status.setText(f"Added {len(new)} video(s). Double-click or press Play to start.")
-		self._headline.setText(self.playlist[self.current_index].name if self.current_index is not None else "Ready to play")
+		self._set_status_message(f"Added {len(new)} video(s). Double-click or press Play to start.")
+		self._set_headline(self.playlist[self.current_index].name if self.current_index is not None else "Ready to play")
 		self._refresh_queue_visibility()
 
 	def _play_index(self, idx, remote=False):
@@ -874,7 +923,7 @@ class VideoPlayer(QtWidgets.QMainWindow):
 			and self._plw.item(i).data(QtCore.Qt.ItemDataRole.UserRole)
 		]
 		if not paths:
-			self._status.setText("Check videos first")
+			self._set_status_message("Check videos first")
 			return
 		existing = {(Path(j["path"]).resolve(), j["lang"]) for j in self._jobs}
 		existing |= {(p.resolve(), l) for p, l in self._active.values()}
@@ -938,12 +987,12 @@ class VideoPlayer(QtWidgets.QMainWindow):
 			else:
 				self.player.set_xwindow(wid)
 		except Exception as e:
-			self._status.setText(f"Video output error: {e}")
+			self._set_status_message(f"Video output error: {e}")
 			return
 		self.player.play()
 		QtCore.QTimer.singleShot(300, self._refresh_audio_devices)
-		self._status.setText(f"Loaded {path.name}")
-		self._headline.setText(path.name)
+		self._set_status_message(f"Loaded {path.name}")
+		self._set_headline(path.name)
 		self._slider.setValue(0)
 		self._elapsed.setText("0:00")
 		self._total.setText("0:00")
@@ -975,8 +1024,8 @@ class VideoPlayer(QtWidgets.QMainWindow):
 		if not remote:
 			self._broadcast("stop", {"position_ms": 0})
 		if self.media:
-			self._status.setText("Playback stopped")
-			self._headline.setText(Path(self.playlist[self.current_index]).name if self.current_index is not None else "Playback stopped")
+			self._set_status_message("Playback stopped")
+			self._set_headline(Path(self.playlist[self.current_index]).name if self.current_index is not None else "Playback stopped")
 
 	def _begin_seek(self):
 		self._resume_after_seek = self.player.is_playing()
@@ -1004,9 +1053,9 @@ class VideoPlayer(QtWidgets.QMainWindow):
 		srt = vid.with_suffix(f".{lang}.srt")
 		if srt.exists():
 			self.player.video_set_subtitle_file(str(srt))
-			self._status.setText(f"Loaded {lang} subtitles")
+			self._set_status_message(f"Loaded {lang} subtitles")
 		else:
-			self._status.setText(f"No {lang} subtitle file found")
+			self._set_status_message(f"No {lang} subtitle file found")
 
 	def _tick(self):
 		if not self.media:
@@ -1026,7 +1075,7 @@ class VideoPlayer(QtWidgets.QMainWindow):
 
 	def _sub_done(self, msg, sub_path, jid, video_path):
 		lang = self._active.get(jid, ("", ""))[1]
-		self._status.setText(f"{msg} [{lang}]")
+		self._set_status_message(f"{msg} [{lang}]")
 		self._update_q(jid, f"Done [{lang}]")
 		if self.media:
 			mrl = self.media.get_mrl()
@@ -1038,13 +1087,13 @@ class VideoPlayer(QtWidgets.QMainWindow):
 		self._cleanup(jid)
 
 	def _sub_err(self, msg, jid, _):
-		self._status.setText(f"Error: {msg}")
+		self._set_status_message(f"Error: {msg}")
 		self._update_q(jid, "Failed")
 		self._cleanup(jid)
 
 	def _sub_prog(self, msg, jid):
 		lang = self._active.get(jid, ("", ""))[1]
-		self._status.setText(f"{msg} [{lang}]")
+		self._set_status_message(f"{msg} [{lang}]")
 		self._update_q(jid, f"{msg} [{lang}]")
 
 	def _cleanup(self, jid):
@@ -1108,7 +1157,7 @@ class VideoPlayer(QtWidgets.QMainWindow):
 		self._sync_applying = True
 		try:
 			if media and idx is None:
-				self._status.setText(f"Partner opened {media.get('name', 'a video')}. Add the same file locally to sync.")
+				self._set_status_message(f"Partner opened {media.get('name', 'a video')}. Add the same file locally to sync.")
 				return
 			pos_ms = int(payload.get("position_ms", 0))
 			if event_type == "load" and idx is not None:
@@ -1138,7 +1187,7 @@ class VideoPlayer(QtWidgets.QMainWindow):
 			elif event_type == "stop":
 				self._stop(remote=True)
 			self._update_time_display()
-			self._sync_status.setText(f"Synced: {event_type}")
+			self._set_sync_status(f"Synced: {event_type}")
 		finally:
 			self._sync_applying = False
 
@@ -1184,6 +1233,10 @@ class VideoPlayer(QtWidgets.QMainWindow):
 			self._toggle_fs()
 		else:
 			super().keyPressEvent(e)
+
+	def resizeEvent(self, e):
+		super().resizeEvent(e)
+		self._refresh_responsive_ui()
 
 	def _seek_rel(self, ms):
 		if self.media and self.player.get_length() > 0:
