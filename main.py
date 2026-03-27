@@ -392,10 +392,7 @@ class WatchSyncClient(QtCore.QObject):
 			self.eventReceived.emit(state)
 
 	def _on_event_sent(self, reply):
-		data = self._decode(reply)
-		if not data:
-			return
-		self.last_event_id = max(self.last_event_id, int(data.get("event_id", self.last_event_id)))
+		self._decode(reply)
 
 	def _on_poll(self, reply):
 		data = self._decode(reply)
@@ -586,16 +583,17 @@ class VideoPlayer(QtWidgets.QMainWindow):
 		vbox.setSpacing(0)
 		self._video_surface = QtWidgets.QWidget()
 		self._video_surface.setObjectName("videoSurface")
-		self._video_surface.setStyleSheet("QWidget#videoSurface{background:black;border-radius:12px}")
-		self._video_surface.setAttribute(QtCore.Qt.WidgetAttribute.WA_NativeWindow, True)
-		self._video_surface.setAttribute(QtCore.Qt.WidgetAttribute.WA_OpaquePaintEvent, True)
-		if is_linux():
-			self._video_surface.setAttribute(QtCore.Qt.WidgetAttribute.WA_DontCreateNativeAncestors, True)
+		self._video_surface.setStyleSheet("QWidget#videoSurface{background:black}")
+		self._video_surface.setSizePolicy(
+			QtWidgets.QSizePolicy.Policy.Expanding,
+			QtWidgets.QSizePolicy.Policy.Expanding,
+		)
+		self._video_surface.setMinimumSize(320, 200)
 		self._video_surface.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.PointingHandCursor))
 		self._vf.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.PointingHandCursor))
 		self._vf.installEventFilter(self)
 		self._video_surface.installEventFilter(self)
-		vbox.addWidget(self._video_surface)
+		vbox.addWidget(self._video_surface, stretch=1)
 		self._rl.addWidget(self._vf, stretch=1)
 
 		self._prog_w = QtWidgets.QFrame()
@@ -796,14 +794,17 @@ class VideoPlayer(QtWidgets.QMainWindow):
 			self._activity.hide()
 		self._refresh_queue_visibility()
 
-	def _load(self, path, remote=False):
-		self.media = self.instance.media_new(str(path))
-		self.player.set_media(self.media)
+	def _get_video_wid(self):
 		self._video_surface.show()
 		self._video_surface.raise_()
-		self._video_surface.winId()
 		QtWidgets.QApplication.processEvents()
-		wid = int(self._video_surface.winId())
+		return int(self._video_surface.winId())
+
+	def _load(self, path, remote=False):
+		self.player.stop()
+		self.media = self.instance.media_new(str(path))
+		self.player.set_media(self.media)
+		wid = self._get_video_wid()
 		try:
 			if sys.platform == "darwin":
 				self.player.set_nsobject(wid)
@@ -814,11 +815,11 @@ class VideoPlayer(QtWidgets.QMainWindow):
 		except Exception as e:
 			self._status.setText(f"Video output error: {e}")
 			return
+		self.player.play()
 		self._status.setText(f"Loaded {path.name}")
 		self._slider.setValue(0)
 		self._elapsed.setText("0:00")
 		self._total.setText("0:00")
-		self.player.play()
 		self._play_btn.setText("Pause")
 		self.timer.start()
 		if not remote:
