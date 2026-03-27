@@ -60,7 +60,7 @@ def build_style():
 		f"QWidget{{font-family:{base_font_family()};font-size:13px;color:#E5E7EB;"
 		"selection-background-color:#2563EB;selection-color:#F8FAFC}"
 		"QMainWindow{background:#0F172A}"
-		f"QFrame#playlistFrame,QFrame#syncFrame,QFrame#controlCard,QFrame#progressCard{{"
+		f"QFrame#sidebarCard,QFrame#playlistFrame,QFrame#syncFrame,QFrame#controlCard,QFrame#progressCard,QFrame#headerCard{{"
 		f"background:#111827;border:1px solid #1F2937;border-radius:{radius}px}}"
 		f"QFrame#videoFrame{{background:#020617;border:1px solid #1E293B;border-radius:{video_radius}px}}"
 		f"QPushButton{{background:#2563EB;color:#F8FAFC;border:none;border-radius:10px;padding:{control_padding};font-weight:600}}"
@@ -87,6 +87,9 @@ def build_style():
 		"QListWidget::item:hover{background:#172033}"
 		f"QLineEdit,QComboBox{{background:#0B1220;border:1px solid #334155;border-radius:10px;padding:{input_padding};color:#F8FAFC}}"
 		"QLineEdit:focus,QComboBox:focus{border:1px solid #2563EB}"
+		"QTabWidget::pane{border:none;background:transparent}"
+		"QTabBar::tab{background:#0B1220;color:#94A3B8;border:1px solid #1F2937;padding:8px 12px;border-top-left-radius:10px;border-top-right-radius:10px;margin-right:6px}"
+		"QTabBar::tab:selected{background:#172554;color:#F8FAFC;border-color:#2563EB}"
 	)
 
 
@@ -398,7 +401,14 @@ class VideoPlayer(QtWidgets.QMainWindow):
 		self.setFocusPolicy(QtCore.Qt.FocusPolicy.StrongFocus)
 		self._apply_platform_tweaks()
 		self.setStyleSheet(STYLE)
-		self.instance = vlc.Instance()
+		vlc_args = [
+			"--quiet",
+			"--no-video-title-show",
+			"--intf=dummy",
+		]
+		if is_linux():
+			vlc_args.extend(["--vout=xcb_xv", "--avcodec-hw=none"])
+		self.instance = vlc.Instance(*vlc_args)
 		self.player = self.instance.media_player_new()
 		self.media = None
 		self.playlist: list[Path] = []
@@ -450,6 +460,30 @@ class VideoPlayer(QtWidgets.QMainWindow):
 			self._default_outer_margins,
 		)
 		self._ml.setSpacing(self._default_outer_spacing)
+
+		self._splitter = QtWidgets.QSplitter(QtCore.Qt.Orientation.Horizontal)
+		self._splitter.setChildrenCollapsible(False)
+		self._splitter.setHandleWidth(10)
+		self._ml.addWidget(self._splitter, stretch=1)
+
+		self._sidebar = QtWidgets.QFrame()
+		self._sidebar.setObjectName("sidebarCard")
+		self._sidebar.setMinimumWidth(320 if is_linux() else 340)
+		self._sidebar.setMaximumWidth(420)
+		sidebar_layout = QtWidgets.QVBoxLayout(self._sidebar)
+		sidebar_layout.setContentsMargins(self._card_margins, self._card_margins, self._card_margins, self._card_margins)
+		sidebar_layout.setSpacing(self._card_spacing)
+		sidebar_title = QtWidgets.QLabel("Now Showing")
+		sidebar_title.setObjectName("titleLabel")
+		sidebar_layout.addWidget(sidebar_title)
+		sidebar_blurb = QtWidgets.QLabel("Keep the video front and center. Use tabs only when you need queue, sync, or chat.")
+		sidebar_blurb.setObjectName("mutedLabel")
+		sidebar_blurb.setWordWrap(True)
+		sidebar_layout.addWidget(sidebar_blurb)
+		self._side_tabs = QtWidgets.QTabWidget()
+		self._side_tabs.setDocumentMode(True)
+		self._side_tabs.setTabPosition(QtWidgets.QTabWidget.TabPosition.North)
+		sidebar_layout.addWidget(self._side_tabs, stretch=1)
 
 		self._pf = QtWidgets.QFrame()
 		self._pf.setObjectName("playlistFrame")
@@ -505,6 +539,7 @@ class VideoPlayer(QtWidgets.QMainWindow):
 		self._qw = QtWidgets.QListWidget()
 		self._qw.setMaximumHeight(self._queue_height)
 		pl.addWidget(self._qw)
+		self._side_tabs.addTab(self._pf, "Library")
 
 		self._sync_frame = QtWidgets.QFrame()
 		self._sync_frame.setObjectName("syncFrame")
@@ -573,20 +608,42 @@ class VideoPlayer(QtWidgets.QMainWindow):
 		self._chat_send_btn.clicked.connect(self._send_chat_message)
 		chat_row.addWidget(self._chat_send_btn)
 		sl.addLayout(chat_row)
-		pl.addWidget(self._sync_frame)
+		self._side_tabs.addTab(self._sync_frame, "Together")
 
 		self._rl = QtWidgets.QVBoxLayout()
 		self._rl.setSpacing(self._default_outer_spacing)
+		self._stage = QtWidgets.QWidget()
+		self._stage_layout = QtWidgets.QVBoxLayout(self._stage)
+		self._stage_layout.setContentsMargins(0, 0, 0, 0)
+		self._stage_layout.setSpacing(self._default_outer_spacing)
+		self._header = QtWidgets.QFrame()
+		self._header.setObjectName("headerCard")
+		header_layout = QtWidgets.QHBoxLayout(self._header)
+		header_layout.setContentsMargins(self._card_margins, 12, self._card_margins, 12)
+		header_layout.setSpacing(self._compact_spacing)
+		self._headline = QtWidgets.QLabel("Drop a video to start")
+		self._headline.setObjectName("titleLabel")
+		header_layout.addWidget(self._headline, stretch=1)
+		self._room_badge = QtWidgets.QLabel("Solo")
+		self._room_badge.setObjectName("badgeLabel")
+		header_layout.addWidget(self._room_badge)
+		self._stage_layout.addWidget(self._header)
+
 		self._vf = QtWidgets.QFrame()
 		self._vf.setObjectName("videoFrame")
 		self._vf.setStyleSheet(VIDEO_STYLE)
 		self._vf.setFrameStyle(QtWidgets.QFrame.Shape.StyledPanel | QtWidgets.QFrame.Shadow.Raised)
 		vbox = QtWidgets.QVBoxLayout(self._vf)
-		vbox.setContentsMargins(10, 10, 10, 10)
+		vbox.setContentsMargins(0, 0, 0, 0)
 		vbox.setSpacing(0)
 		self._video_surface = QtWidgets.QWidget()
 		self._video_surface.setObjectName("videoSurface")
 		self._video_surface.setStyleSheet("QWidget#videoSurface{background:black}")
+		self._video_surface.setAttribute(QtCore.Qt.WidgetAttribute.WA_NativeWindow, True)
+		self._video_surface.setAttribute(QtCore.Qt.WidgetAttribute.WA_OpaquePaintEvent, True)
+		self._video_surface.setAttribute(QtCore.Qt.WidgetAttribute.WA_PaintOnScreen, True)
+		if is_linux():
+			self._video_surface.setAttribute(QtCore.Qt.WidgetAttribute.WA_DontCreateNativeAncestors, True)
 		self._video_surface.setSizePolicy(
 			QtWidgets.QSizePolicy.Policy.Expanding,
 			QtWidgets.QSizePolicy.Policy.Expanding,
@@ -597,7 +654,7 @@ class VideoPlayer(QtWidgets.QMainWindow):
 		self._vf.installEventFilter(self)
 		self._video_surface.installEventFilter(self)
 		vbox.addWidget(self._video_surface, stretch=1)
-		self._rl.addWidget(self._vf, stretch=1)
+		self._stage_layout.addWidget(self._vf, stretch=1)
 
 		self._prog_w = QtWidgets.QFrame()
 		self._prog_w.setObjectName("progressCard")
@@ -614,7 +671,7 @@ class VideoPlayer(QtWidgets.QMainWindow):
 		pr.addWidget(self._slider, stretch=1)
 		pr.addWidget(self._total)
 		self._prog_w.setLayout(pr)
-		self._rl.addWidget(self._prog_w)
+		self._stage_layout.addWidget(self._prog_w)
 
 		self._ctrl_w = QtWidgets.QFrame()
 		self._ctrl_w.setObjectName("controlCard")
@@ -653,11 +710,11 @@ class VideoPlayer(QtWidgets.QMainWindow):
 		self._status.setObjectName("statusLabel")
 		cl.addWidget(self._status)
 		self._ctrl_w.setLayout(cl)
-		self._rl.addWidget(self._ctrl_w)
+		self._stage_layout.addWidget(self._ctrl_w)
 
-		self._pf.setMinimumWidth(340 if is_linux() else 360)
-		self._ml.addWidget(self._pf, stretch=0)
-		self._ml.addLayout(self._rl, stretch=1)
+		self._splitter.addWidget(self._sidebar)
+		self._splitter.addWidget(self._stage)
+		self._splitter.setSizes([340, 900])
 		self.setCentralWidget(c)
 		self._ctrl_w.hide()
 		self._prog_w.hide()
@@ -713,8 +770,10 @@ class VideoPlayer(QtWidgets.QMainWindow):
 		self._set_chat_enabled(connected)
 		if connected:
 			self._sync_status.setText(f"Connected to {self._room_in.text().strip()}")
+			self._room_badge.setText(f"Room: {self._room_in.text().strip()}")
 			self._append_chat_message("System", "Chat is ready.")
 		else:
+			self._room_badge.setText("Solo")
 			self._append_chat_message("System", "Disconnected from room.")
 
 	def _on_sync_members(self, members):
@@ -771,6 +830,7 @@ class VideoPlayer(QtWidgets.QMainWindow):
 			self.current_index = 0
 			self._plw.setCurrentRow(0)
 		self._status.setText(f"Added {len(new)} video(s). Double-click or press Play to start.")
+		self._headline.setText(self.playlist[self.current_index].name if self.current_index is not None else "Ready to play")
 		self._refresh_queue_visibility()
 
 	def _play_index(self, idx, remote=False):
@@ -883,6 +943,7 @@ class VideoPlayer(QtWidgets.QMainWindow):
 		self.player.play()
 		QtCore.QTimer.singleShot(300, self._refresh_audio_devices)
 		self._status.setText(f"Loaded {path.name}")
+		self._headline.setText(path.name)
 		self._slider.setValue(0)
 		self._elapsed.setText("0:00")
 		self._total.setText("0:00")
@@ -915,6 +976,7 @@ class VideoPlayer(QtWidgets.QMainWindow):
 			self._broadcast("stop", {"position_ms": 0})
 		if self.media:
 			self._status.setText("Playback stopped")
+			self._headline.setText(Path(self.playlist[self.current_index]).name if self.current_index is not None else "Playback stopped")
 
 	def _begin_seek(self):
 		self._resume_after_seek = self.player.is_playing()
@@ -1141,7 +1203,7 @@ class VideoPlayer(QtWidgets.QMainWindow):
 			self._ml.setSpacing(self._default_outer_spacing)
 			self._vf.setStyleSheet(VIDEO_STYLE)
 			self._vf.setFrameStyle(QtWidgets.QFrame.Shape.StyledPanel | QtWidgets.QFrame.Shadow.Raised)
-			for w in (self._pf, self._ctrl_w, self._prog_w):
+			for w in (self._sidebar, self._header, self._ctrl_w, self._prog_w):
 				w.show()
 			if self.saved_geometry:
 				self.setGeometry(self.saved_geometry)
@@ -1153,7 +1215,7 @@ class VideoPlayer(QtWidgets.QMainWindow):
 			self._ml.setSpacing(0)
 			self._vf.setStyleSheet("QFrame{background:black;border:none}")
 			self._vf.setFrameStyle(QtWidgets.QFrame.Shape.NoFrame)
-			for w in (self._pf, self._ctrl_w, self._prog_w):
+			for w in (self._sidebar, self._header, self._ctrl_w, self._prog_w):
 				w.hide()
 			self.showFullScreen()
 			if not is_linux():
