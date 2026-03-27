@@ -472,8 +472,9 @@ class VideoPlayer(QtWidgets.QMainWindow):
 
 		self._sidebar = QtWidgets.QFrame()
 		self._sidebar.setObjectName("sidebarCard")
-		self._sidebar.setMinimumWidth(260 if is_linux() else 280)
-		self._sidebar.setMaximumWidth(420)
+		self._sidebar.setMinimumWidth(180)
+		self._sidebar.setMaximumWidth(360)
+		self._sidebar.setSizePolicy(QtWidgets.QSizePolicy.Policy.Preferred, QtWidgets.QSizePolicy.Policy.Expanding)
 		sidebar_layout = QtWidgets.QVBoxLayout(self._sidebar)
 		sidebar_layout.setContentsMargins(self._card_margins, self._card_margins, self._card_margins, self._card_margins)
 		sidebar_layout.setSpacing(self._card_spacing)
@@ -487,6 +488,8 @@ class VideoPlayer(QtWidgets.QMainWindow):
 		self._side_tabs = QtWidgets.QTabWidget()
 		self._side_tabs.setDocumentMode(True)
 		self._side_tabs.setTabPosition(QtWidgets.QTabWidget.TabPosition.North)
+		self._side_tabs.setUsesScrollButtons(True)
+		self._side_tabs.setElideMode(QtCore.Qt.TextElideMode.ElideRight)
 		sidebar_layout.addWidget(self._side_tabs, stretch=1)
 
 		self._pf = QtWidgets.QFrame()
@@ -529,14 +532,17 @@ class VideoPlayer(QtWidgets.QMainWindow):
 		self._sel_btn.setObjectName("secondaryButton")
 		self._sel_btn.clicked.connect(self._toggle_select)
 		self._sel_btn.hide()
+		self._sel_btn.setSizePolicy(QtWidgets.QSizePolicy.Policy.Expanding, QtWidgets.QSizePolicy.Policy.Fixed)
 		actions.addWidget(self._sel_btn, 0, 1)
 		for idx, (lbl, fn) in enumerate([("Download Subs", self._download_subs), ("Add Videos", self._add_videos)], start=2):
 			b = QtWidgets.QPushButton(lbl)
 			if lbl == "Download Subs":
 				b.setObjectName("secondaryButton")
 			b.clicked.connect(fn)
+			b.setSizePolicy(QtWidgets.QSizePolicy.Policy.Expanding, QtWidgets.QSizePolicy.Policy.Fixed)
 			actions.addWidget(b, 0, idx - 1)
-		actions.setColumnStretch(4, 1)
+		for col in range(1, 4):
+			actions.setColumnStretch(col, 1)
 		hdr_wrap.addLayout(actions)
 		pl.addLayout(hdr_wrap)
 
@@ -618,6 +624,7 @@ class VideoPlayer(QtWidgets.QMainWindow):
 		self._chat_send_btn = QtWidgets.QPushButton("Send")
 		self._chat_send_btn.setObjectName("secondaryButton")
 		self._chat_send_btn.clicked.connect(self._send_chat_message)
+		self._chat_send_btn.setSizePolicy(QtWidgets.QSizePolicy.Policy.Maximum, QtWidgets.QSizePolicy.Policy.Fixed)
 		chat_row.addWidget(self._chat_send_btn)
 		sl.addLayout(chat_row)
 		self._side_tabs.addTab(self._sync_frame, "Together")
@@ -641,6 +648,7 @@ class VideoPlayer(QtWidgets.QMainWindow):
 		self._room_badge = QtWidgets.QLabel("Solo")
 		self._room_badge.setObjectName("badgeLabel")
 		self._room_badge.setSizePolicy(QtWidgets.QSizePolicy.Policy.Maximum, QtWidgets.QSizePolicy.Policy.Preferred)
+		self._room_badge.setMinimumWidth(0)
 		header_layout.addWidget(self._room_badge)
 		self._stage_layout.addWidget(self._header)
 
@@ -697,16 +705,18 @@ class VideoPlayer(QtWidgets.QMainWindow):
 		top_controls.setSpacing(self._compact_spacing)
 		self._play_btn = QtWidgets.QPushButton("Play")
 		self._play_btn.clicked.connect(self._toggle_play)
+		self._play_btn.setSizePolicy(QtWidgets.QSizePolicy.Policy.Expanding, QtWidgets.QSizePolicy.Policy.Fixed)
 		top_controls.addWidget(self._play_btn)
 		b = QtWidgets.QPushButton("Stop")
 		b.setObjectName("secondaryButton")
 		b.clicked.connect(self._stop)
+		b.setSizePolicy(QtWidgets.QSizePolicy.Policy.Expanding, QtWidgets.QSizePolicy.Policy.Fixed)
 		top_controls.addWidget(b)
 		self._fs_btn = QtWidgets.QPushButton("Fullscreen")
 		self._fs_btn.setObjectName("secondaryButton")
 		self._fs_btn.clicked.connect(self._toggle_fs)
+		self._fs_btn.setSizePolicy(QtWidgets.QSizePolicy.Policy.Expanding, QtWidgets.QSizePolicy.Policy.Fixed)
 		top_controls.addWidget(self._fs_btn)
-		top_controls.addStretch()
 		control_wrap.addLayout(top_controls)
 		audio_controls = QtWidgets.QGridLayout()
 		audio_controls.setHorizontalSpacing(self._compact_spacing)
@@ -715,7 +725,6 @@ class VideoPlayer(QtWidgets.QMainWindow):
 		self._audio_label.setObjectName("sectionLabel")
 		audio_controls.addWidget(self._audio_label, 0, 0)
 		self._audio_combo = QtWidgets.QComboBox()
-		self._audio_combo.setMaximumWidth(180)
 		self._audio_combo.setSizePolicy(QtWidgets.QSizePolicy.Policy.Expanding, QtWidgets.QSizePolicy.Policy.Fixed)
 		self._audio_combo.currentIndexChanged.connect(self._on_audio_device_changed)
 		audio_controls.addWidget(self._audio_combo, 0, 1)
@@ -725,7 +734,6 @@ class VideoPlayer(QtWidgets.QMainWindow):
 		vol = QtWidgets.QSlider(QtCore.Qt.Orientation.Horizontal)
 		vol.setRange(0, 100)
 		vol.setValue(80)
-		vol.setMaximumWidth(self._control_slider_width)
 		vol.setSizePolicy(QtWidgets.QSizePolicy.Policy.Expanding, QtWidgets.QSizePolicy.Policy.Fixed)
 		vol.valueChanged.connect(self.player.audio_set_volume)
 		self._vol_slider = vol
@@ -744,7 +752,9 @@ class VideoPlayer(QtWidgets.QMainWindow):
 
 		self._splitter.addWidget(self._sidebar)
 		self._splitter.addWidget(self._stage)
-		self._splitter.setSizes([340, 900])
+		self._splitter.setStretchFactor(0, 0)
+		self._splitter.setStretchFactor(1, 1)
+		self._splitter.setSizes([260, 1000])
 		self.setCentralWidget(c)
 		self._ctrl_w.hide()
 		self._prog_w.hide()
@@ -770,30 +780,24 @@ class VideoPlayer(QtWidgets.QMainWindow):
 
 	def _set_sync_status(self, text):
 		self._sync_status_text = text
-		self._sync_status.setText(text)
+		self._sync_status.setText(self._elide(text, self._sync_status))
 
 	def _set_sync_members(self, text):
 		self._sync_members_text = text
-		self._sync_members.setText(text)
+		self._sync_members.setText(self._elide(text, self._sync_members))
 
 	def _refresh_responsive_ui(self):
 		narrow = self.width() < 1180
 		very_narrow = self.width() < 980
 		self._audio_label.setVisible(not very_narrow)
 		self._vol_label.setVisible(not very_narrow)
-		self._audio_combo.setMaximumWidth(130 if narrow else 180)
-		self._vol_slider.setMaximumWidth(84 if very_narrow else self._control_slider_width)
-		self._sidebar.setMaximumWidth(320 if very_narrow else 420)
-		if very_narrow:
-			self._splitter.setSizes([250, max(520, self.width() - 250)])
-		elif narrow:
-			self._splitter.setSizes([290, max(620, self.width() - 290)])
-		else:
-			self._splitter.setSizes([340, max(760, self.width() - 340)])
+		self._audio_combo.setMaximumWidth(110 if very_narrow else 140 if narrow else 180)
+		self._vol_slider.setMaximumWidth(72 if very_narrow else 96 if narrow else self._control_slider_width)
+		self._sidebar.setMaximumWidth(260 if very_narrow else 300 if narrow else 360)
 		self._set_headline(self._headline_text)
 		self._set_status_message(self._status_text)
-		self._sync_status.setText(self._sync_status_text)
-		self._sync_members.setText(self._sync_members_text)
+		self._set_sync_status(self._sync_status_text)
+		self._set_sync_members(self._sync_members_text)
 
 	def _refresh_audio_devices(self):
 		self._audio_combo.blockSignals(True)
