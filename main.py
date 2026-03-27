@@ -15,7 +15,7 @@ if sys.platform.startswith("linux") and os.environ.get("WAYLAND_DISPLAY") and no
 	os.environ["QT_QPA_PLATFORM"] = "xcb"
 
 from dotenv import load_dotenv
-from PyQt6 import QtCore, QtGui, QtNetwork, QtWidgets
+from PyQt6 import QtCore, QtGui, QtWebSockets, QtWidgets
 import requests
 import vlc
 import whisper
@@ -291,17 +291,19 @@ class WatchSyncClient(QtCore.QObject):
 
 	def __init__(self, parent=None):
 		super().__init__(parent)
-		self.network = QtNetwork.QNetworkAccessManager(self)
-		self.poll_timer = QtCore.QTimer(self)
-		self.poll_timer.setInterval(900)
-		self.poll_timer.timeout.connect(self.poll)
+		self._ws = QtWebSockets.QWebSocket("", QtWebSockets.QWebSocketProtocol.Version.VersionLatest, self)
+		self._ws.connected.connect(self._on_ws_connected)
+		self._ws.disconnected.connect(self._on_ws_disconnected)
+		self._ws.textMessageReceived.connect(self._on_message)
+		self._ws.errorOccurred.connect(self._on_error)
+		self._ping_timer = QtCore.QTimer(self)
+		self._ping_timer.setInterval(15_000)
+		self._ping_timer.timeout.connect(self._send_ping)
 		self.server_url = ""
 		self.room_code = ""
 		self.name = ""
 		self.client_id = uuid.uuid4().hex
 		self.connected = False
-		self.last_event_id = 0
-		self._pending = set()
 
 	def connect_room(self, server_url: str, room_code: str, name: str):
 		self.server_url = server_url.rstrip("/")
@@ -310,100 +312,77 @@ class WatchSyncClient(QtCore.QObject):
 		if not self.server_url or not self.room_code:
 			self.statusChanged.emit("Server URL and room code are required")
 			return
-		self._post(
-			f"/rooms/{quote(self.room_code)}/join",
-			{"client_id": self.client_id, "name": self.name},
-			self._on_join,
-		)
-		self.statusChanged.emit("Connecting to room...")
+		# convert http(s) to ws(s)
+		ws_url = self.server_url
+		if ws_url.startswith("http://"):
+			ws_url = "ws://" + ws_url[7:]
+		elif ws_url.startswith("https://"):
+			ws_url = "wss://" + ws_url[8:]
+		elif not ws_url.startswith("ws"):
+			ws_url = "ws://" + ws_url
+		self.statusChanged.emit("Connecting...")
+		self._ws.open(QtCore.QUrl(ws_url))
 
 	def disconnect_room(self):
-		self.poll_timer.stop()
+		self._ping_timer.stop()
+		self._ws.close()
 		self.connected = False
-		self.last_event_id = 0
-		self._pending.clear()
 		self.connectedChanged.emit(False)
 		self.memberChanged.emit([])
-		self.statusChanged.emit("Watch Together disconnected")
+		self.statusChanged.emit("Disconnected")
 
 	def send_event(self, event_type: str, payload: dict):
 		if not self.connected:
 			return
-		self._post(
-			f"/rooms/{quote(self.room_code)}/events",
-			{"client_id": self.client_id, "type": event_type, "payload": payload},
-			self._on_event_sent,
-		)
+		self._send({"action": "event", "type": event_type, "payload": payload})
 
-	def poll(self):
-		if not self.connected:
-			return
-		req = QtNetwork.QNetworkRequest(
-			QtCore.QUrl(
-				f"{self.server_url}/rooms/{quote(self.room_code)}/events?since={self.last_event_id}&client_id={self.client_id}"
-			)
-		)
-		reply = self.network.get(req)
-		self._track(reply, self._on_poll)
+	def _send(self, obj: dict):
+		self._ws.sendTextMessage(json.dumps(obj))
 
-	def _post(self, path: str, payload: dict, callback):
-		req = QtNetwork.QNetworkRequest(QtCore.QUrl(f"{self.server_url}{path}"))
-		req.setHeader(
-			QtNetwork.QNetworkRequest.KnownHeaders.ContentTypeHeader,
-			"application/json",
-		)
-		reply = self.network.post(req, json.dumps(payload).encode("utf-8"))
-		self._track(reply, callback)
+	def _send_ping(self):
+		if self.connected:
+			self._send({"action": "ping"})
 
-	def _track(self, reply, callback):
-		self._pending.add(reply)
+	def _on_ws_connected(self):
+		self._send({
+			"action": "join",
+			"client_id": self.client_id,
+			"name": self.name,
+			"room": self.room_code,
+		})
 
-		def done():
-			self._pending.discard(reply)
-			callback(reply)
-			reply.deleteLater()
+	def _on_ws_disconnected(self):
+		was_connected = self.connected
+		self._ping_timer.stop()
+		self.connected = False
+		self.connectedChanged.emit(False)
+		self.memberChanged.emit([])
+		if was_connected:
+			self.statusChanged.emit("Connection lost")
 
-		reply.finished.connect(done)
+	def _on_error(self, error):
+		self.statusChanged.emit(f"Connection error: {self._ws.errorString()}")
 
-	def _decode(self, reply):
-		if reply.error() != QtNetwork.QNetworkReply.NetworkError.NoError:
-			self.statusChanged.emit(reply.errorString())
-			return None
+	def _on_message(self, raw: str):
 		try:
-			return json.loads(bytes(reply.readAll()).decode("utf-8") or "{}")
+			msg = json.loads(raw)
 		except json.JSONDecodeError:
-			self.statusChanged.emit("Sync server returned invalid JSON")
-			return None
-
-	def _on_join(self, reply):
-		data = self._decode(reply)
-		if not data:
-			self.connected = False
-			self.connectedChanged.emit(False)
 			return
-		self.connected = True
-		self.last_event_id = int(data.get("latest_event_id", 0))
-		self.connectedChanged.emit(True)
-		self.memberChanged.emit(data.get("members", []))
-		self.statusChanged.emit(f"Connected to room {self.room_code}")
-		self.poll_timer.start()
-		state = data.get("state")
-		if state:
-			self.eventReceived.emit(state)
-
-	def _on_event_sent(self, reply):
-		self._decode(reply)
-
-	def _on_poll(self, reply):
-		data = self._decode(reply)
-		if not data:
-			return
-		self.last_event_id = max(self.last_event_id, int(data.get("latest_event_id", self.last_event_id)))
-		self.memberChanged.emit(data.get("members", []))
-		for event in data.get("events", []):
-			if event.get("client_id") == self.client_id:
-				continue
-			self.eventReceived.emit(event)
+		action = msg.get("action")
+		if action == "joined":
+			self.connected = True
+			self._ping_timer.start()
+			self.connectedChanged.emit(True)
+			self.memberChanged.emit(msg.get("members", []))
+			self.statusChanged.emit(f"Connected to {self.room_code}")
+			state = msg.get("state")
+			if state:
+				self.eventReceived.emit(state)
+		elif action == "event":
+			if msg.get("client_id") != self.client_id:
+				self.eventReceived.emit(msg)
+		elif action == "members":
+			self.memberChanged.emit(msg.get("members", []))
 
 
 class VideoPlayer(QtWidgets.QMainWindow):
@@ -537,7 +516,7 @@ class VideoPlayer(QtWidgets.QMainWindow):
 		sync_body.setObjectName("mutedLabel")
 		sync_body.setWordWrap(True)
 		sl.addWidget(sync_body)
-		self._server_in = QtWidgets.QLineEdit("http://127.0.0.1:8765")
+		self._server_in = QtWidgets.QLineEdit("ws://127.0.0.1:8765")
 		self._room_in = QtWidgets.QLineEdit("date-night")
 		self._name_in = QtWidgets.QLineEdit(os.environ.get("USER", "You"))
 		self._server_in.setPlaceholderText("Sync server URL")
@@ -629,7 +608,14 @@ class VideoPlayer(QtWidgets.QMainWindow):
 		self._fs_btn.setObjectName("secondaryButton")
 		self._fs_btn.clicked.connect(self._toggle_fs)
 		cl.addWidget(self._fs_btn)
-		vol_label = QtWidgets.QLabel("Volume")
+		audio_label = QtWidgets.QLabel("Audio")
+		audio_label.setObjectName("sectionLabel")
+		cl.addWidget(audio_label)
+		self._audio_combo = QtWidgets.QComboBox()
+		self._audio_combo.setMaximumWidth(180)
+		self._audio_combo.currentIndexChanged.connect(self._on_audio_device_changed)
+		cl.addWidget(self._audio_combo)
+		vol_label = QtWidgets.QLabel("Vol")
 		vol_label.setObjectName("sectionLabel")
 		cl.addWidget(vol_label)
 		vol = QtWidgets.QSlider(QtCore.Qt.Orientation.Horizontal)
@@ -654,6 +640,35 @@ class VideoPlayer(QtWidgets.QMainWindow):
 		self._queue_label.hide()
 		self._qw.hide()
 		self._refresh_selection_button()
+
+	def _refresh_audio_devices(self):
+		self._audio_combo.blockSignals(True)
+		self._audio_combo.clear()
+		devices = self.player.audio_output_device_enum()
+		if devices:
+			current = self.player.audio_output_device_get()
+			selected_idx = 0
+			d = devices
+			idx = 0
+			while d:
+				name = d.contents.description.decode("utf-8", errors="replace") if d.contents.description else f"Device {idx}"
+				dev_id = d.contents.device.decode("utf-8", errors="replace") if d.contents.device else ""
+				self._audio_combo.addItem(name, dev_id)
+				if current and dev_id == current:
+					selected_idx = idx
+				idx += 1
+				if d.contents.next:
+					d = d.contents.next
+				else:
+					break
+			vlc.libvlc_audio_output_device_list_release(devices)
+			self._audio_combo.setCurrentIndex(selected_idx)
+		self._audio_combo.blockSignals(False)
+
+	def _on_audio_device_changed(self, index):
+		dev_id = self._audio_combo.itemData(index)
+		if dev_id:
+			self.player.audio_output_device_set(None, dev_id)
 
 	def _connect_sync(self):
 		self.sync.connect_room(
@@ -816,6 +831,7 @@ class VideoPlayer(QtWidgets.QMainWindow):
 			self._status.setText(f"Video output error: {e}")
 			return
 		self.player.play()
+		QtCore.QTimer.singleShot(300, self._refresh_audio_devices)
 		self._status.setText(f"Loaded {path.name}")
 		self._slider.setValue(0)
 		self._elapsed.setText("0:00")
@@ -962,11 +978,11 @@ class VideoPlayer(QtWidgets.QMainWindow):
 		return None
 
 	def _apply_remote_event(self, event):
-		payload = event.get("payload", {}) if "payload" in event else event.get("payload", {})
+		payload = event.get("payload") or {}
 		event_type = event.get("type")
-		if event.get("client_id") == self.sync.client_id:
+		if not event_type:
 			return
-		if event_type is None and event.get("payload") is None:
+		if event.get("client_id") == self.sync.client_id:
 			return
 		media = payload.get("media", {})
 		idx = self._find_playlist_index(media) if media else None
@@ -975,37 +991,47 @@ class VideoPlayer(QtWidgets.QMainWindow):
 			if media and idx is None:
 				self._status.setText(f"Partner opened {media.get('name', 'a video')}. Add the same file locally to sync.")
 				return
+			pos_ms = int(payload.get("position_ms", 0))
 			if event_type == "load" and idx is not None:
 				self._play_index(idx, remote=True)
-				self.player.set_time(int(payload.get("position_ms", 0)))
+				self.player.set_time(pos_ms)
 				if not payload.get("playing", True):
 					self.player.pause()
 					self._play_btn.setText("Play")
 			elif event_type == "play" and idx is not None:
 				if self.current_index != idx:
 					self._play_index(idx, remote=True)
-				self.player.set_time(int(payload.get("position_ms", 0)))
-				self.player.play()
+				self.player.set_time(pos_ms)
+				if not self.player.is_playing():
+					self.player.play()
 				self._play_btn.setText("Pause")
 			elif event_type == "pause" and idx is not None:
 				if self.current_index != idx:
 					self._play_index(idx, remote=True)
-				self.player.set_time(int(payload.get("position_ms", 0)))
-				self.player.pause()
+				self.player.set_time(pos_ms)
+				if self.player.is_playing():
+					self.player.pause()
 				self._play_btn.setText("Play")
 			elif event_type == "seek" and idx is not None:
 				if self.current_index != idx:
 					self._play_index(idx, remote=True)
-				self.player.set_time(int(payload.get("position_ms", 0)))
+				self.player.set_time(pos_ms)
 			elif event_type == "stop":
 				self._stop(remote=True)
-			if event_type:
-				self._sync_status.setText(f"Synced remote {event_type}")
+			self._update_time_display()
+			self._sync_status.setText(f"Synced: {event_type}")
 		finally:
-			QtCore.QTimer.singleShot(250, self._clear_sync_guard)
+			self._sync_applying = False
 
-	def _clear_sync_guard(self):
-		self._sync_applying = False
+	def _update_time_display(self):
+		ln = self.player.get_length()
+		t = self.player.get_time()
+		if ln > 0:
+			self._slider.blockSignals(True)
+			self._slider.setValue(int(t / ln * 1000))
+			self._slider.blockSignals(False)
+			self._elapsed.setText(fmt(t))
+			self._total.setText(fmt(ln))
 
 	def dragEnterEvent(self, e):
 		e.acceptProposedAction() if e.mimeData().hasUrls() else e.ignore()
