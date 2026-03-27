@@ -41,6 +41,21 @@ LANG_MAP = {
 	"hin": "hi",
 	"ara": "ar",
 }
+WHISPER_LANG_MAP = {
+	"eng": "english",
+	"tur": "turkish",
+	"rus": "russian",
+	"fra": "french",
+	"spa": "spanish",
+	"ita": "italian",
+	"deu": "german",
+	"nld": "dutch",
+	"zho": "chinese",
+	"jpn": "japanese",
+	"hin": "hindi",
+	"ara": "arabic",
+	"por": "portuguese",
+}
 
 def is_linux():
 	return sys.platform.startswith("linux")
@@ -286,13 +301,27 @@ class SubtitleWorker(QtCore.QObject):
 			raise RuntimeError("ffmpeg required for Whisper")
 		self._log("Loading Whisper model...")
 		model = whisper.load_model("large-v3")
-		self._log("Transcribing...")
-		result = model.transcribe(str(self.path), fp16=False)
+		opts = {"fp16": False}
+		if self.lang == "eng":
+			# Whisper can translate arbitrary supported speech to English.
+			self._log("Translating to English with Whisper...")
+			opts["task"] = "translate"
+		else:
+			# For non-English requests Whisper fallback works as same-language transcription.
+			# This is useful when the video's spoken language matches the selected subtitle language.
+			lang_name = WHISPER_LANG_MAP.get(self.lang)
+			if lang_name:
+				self._log(f"Transcribing with Whisper [{lang_name}]...")
+				opts["task"] = "transcribe"
+				opts["language"] = lang_name
+			else:
+				self._log("Transcribing with Whisper...")
+		result = model.transcribe(str(self.path), **opts)
 		lines = [
 			f"{i}\n{srt_ts(s['start'])} --> {srt_ts(s['end'])}\n{s.get('text', '').strip()}"
 			for i, s in enumerate(result.get("segments", []), 1)
 		]
-		out = self.path.with_suffix(".whisper.srt")
+		out = self.path.with_suffix(f".{self.lang}.srt")
 		out.write_text("\n\n".join(lines) + "\n", encoding="utf-8")
 		self._log(f"Whisper done: {out.name}")
 		return out
